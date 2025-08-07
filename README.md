@@ -79,17 +79,51 @@ sudo cp _ssm_completion.zsh /usr/local/share/zsh/site-functions/_ssm
 compinit
 ```
 
-**For bash (future support):**
+**For bash:**
 ```bash
-# Bash completion support coming soon
-# Will follow the pattern: ssm completion bash > ~/.bash_completion
+# Method 1: User-specific installation
+mkdir -p ~/.bash_completion.d
+cp _ssm_completion.bash ~/.bash_completion.d/_ssm
+
+# Add to your ~/.bashrc (if not already present)
+echo 'for f in ~/.bash_completion.d/*; do [ -f "$f" ] && source "$f"; done' >> ~/.bashrc
+
+# Reload your shell
+exec bash
+```
+
+**Alternative bash methods:**
+```bash
+# Method 2: Direct sourcing in ~/.bashrc
+echo 'source /path/to/sealed-secret-manager/_ssm_completion.bash' >> ~/.bashrc
+exec bash
+
+# Method 3: System-wide installation (requires sudo)
+sudo cp _ssm_completion.bash /etc/bash_completion.d/ssm
+# Then reload: exec bash
 ```
 
 **Verify completion is working:**
+
+**For zsh:**
 ```bash
 # Test tab completion
 ssm <TAB>        # Should show: create, update, list, apply, decrypt
 ssm create <TAB> # Should show available options
+
+# If using Oh My Zsh and completion doesn't work:
+omz reload       # Reload Oh My Zsh
+compinit         # Reload completions manually
+```
+
+**For bash:**
+```bash
+# Test tab completion (press TAB twice if single TAB doesn't work)
+ssm <TAB><TAB>        # Should show: create, update, list, apply, decrypt
+ssm create <TAB><TAB> # Should show available options
+
+# If completion doesn't work:
+source ~/.bashrc      # Reload bash configuration
 ```
 
 ## 📖 Usage
@@ -226,6 +260,7 @@ sealed-secret-manager/
 ├── ssm.py                    # Main CLI application
 ├── setup.py                  # Python package configuration
 ├── _ssm_completion.zsh       # zsh tab completion script
+├── _ssm_completion.bash      # bash tab completion script
 └── README.md                 # This file
 ```
 
@@ -256,6 +291,17 @@ These can be overridden using command-line flags or by modifying the script.
    - Remove any old sourced completion from ~/.zshrc
    - Reinstall using the proper installation method above
    - Restart your shell: `exec zsh`
+7. **Bash completion not working**:
+   - Check bash completion is enabled: `type _completion_loader`
+   - Verify completion file exists: `ls ~/.bash_completion.d/_ssm`
+   - Test if completion function is loaded: `complete -p ssm`
+   - Reload bash config: `source ~/.bashrc`
+   - Try manual load: `source ~/.bash_completion.d/_ssm`
+8. **Bash completion shows no suggestions**:
+   - Press TAB twice instead of once
+   - Check if bash-completion package is installed: `which bash_completion`
+   - On macOS with Homebrew: `brew install bash-completion`
+   - Add to ~/.bash_profile: `[[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"`
 
 ### Error Handling
 

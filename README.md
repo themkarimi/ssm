@@ -6,6 +6,7 @@ A streamlined CLI tool for managing Kubernetes SealedSecrets with an intuitive i
 
 - **Interactive Secret Creation**: Easily create new SealedSecrets with automatic sensitive value masking
 - **Smart Updates**: Update existing secrets with selective key modification and automatic backups
+- **Secret Conversion**: Convert existing Kubernetes secrets to SealedSecrets with YAML output
 - **Unified Listing**: View both local SealedSecret files and cluster-deployed secrets
 - **Secure Decryption**: Decrypt and view secret contents with optional value masking for security
 - **One-Step Deployment**: Apply SealedSecrets to your Kubernetes cluster seamlessly
@@ -149,6 +150,10 @@ ssm apply my-secret.yaml
 # Decrypt and view a SealedSecret
 ssm decrypt my-secret.yaml
 ssm decrypt my-secret --namespace production
+
+# Convert an existing Kubernetes secret to a SealedSecret
+ssm convert existing-secret --namespace production
+ssm convert existing-secret --namespace production --output my-sealed-secret.yaml
 ```
 
 ### Advanced Options
@@ -244,6 +249,38 @@ Show full values? [y/N]: y
   username: admin
   password: super-secret-password
 ========================================
+```
+
+### Converting Existing Kubernetes Secrets
+
+```bash
+$ ssm convert database-credentials --namespace production
+🔄 Converting Kubernetes secret 'database-credentials' from namespace 'production' to SealedSecret
+📋 Found 2 data fields in secret
+✅ SealedSecret created successfully: database-credentials.yaml
+
+📄 Generated SealedSecret YAML:
+==================================================
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  creationTimestamp: null
+  name: database-credentials
+  namespace: production
+spec:
+  encryptedData:
+    password: AgBy3i4OJSWK+PiTySYZZA9rO21HcMiSsxXR4gY...
+    username: AgBjbvvhh0jOMJi4LlbSEr27YO7Y8vGMwVGmDY...
+  template:
+    metadata:
+      creationTimestamp: null
+      name: database-credentials
+      namespace: production
+    type: Opaque
+==================================================
+
+Apply SealedSecret to cluster? [y/N]: y
+✅ Applied: sealedsecret.bitnami.com/database-credentials configured
 ```
 
 ## 🔒 Security Features

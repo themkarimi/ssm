@@ -12,6 +12,7 @@ Usage:
     ssm list [--namespace=<namespace>]          # List all SealedSecrets (local and cluster)
     ssm decrypt <file|name>                     # Decrypt and view SealedSecret
     ssm apply <file>                            # Apply SealedSecret to cluster
+    ssm convert <name> [--namespace=default]    # Convert existing Kubernetes secret to SealedSecret
 """
 import argparse
 import base64
@@ -361,6 +362,103 @@ class SealedSecretManager:
             print(f"❌ Decrypt failed: {e.stderr}")
             return False
 
+    def convert_secret(self, name: str, namespace: str = "default", output_file: str = None) -> bool:
+        """Convert an existing Kubernetes secret to a SealedSecret"""
+        print(f"🔄 Converting Kubernetes secret '{name}' from namespace '{namespace}' to SealedSecret")
+        
+        # Set default output file if not provided
+        if not output_file:
+            output_file = str(self.directory / f"{name}.yaml")
+        
+        try:
+            # Get the existing secret from the cluster
+            result = subprocess.run([
+                'kubectl', 'get', 'secret', name, '-n', namespace, '-o', 'yaml'
+            ], capture_output=True, text=True, check=True)
+            
+            # Parse the secret
+            secret = yaml.safe_load(result.stdout)
+            
+            if not secret or secret.get('kind') != 'Secret':
+                print(f"❌ '{name}' is not a valid Kubernetes Secret")
+                return False
+            
+            # Extract the secret data
+            secret_data = {}
+            if 'data' in secret:
+                print(f"📋 Found {len(secret['data'])} data fields in secret")
+                for key, value in secret['data'].items():
+                    try:
+                        # Decode base64 data back to string
+                        decoded_value = base64.b64decode(value).decode('utf-8')
+                        secret_data[key] = decoded_value
+                    except Exception as e:
+                        print(f"⚠️  Could not decode key '{key}': {e}")
+                        continue
+            
+            if not secret_data:
+                print(f"❌ No decodable data found in secret '{name}'")
+                return False
+            
+            # Create a new secret structure for sealing
+            new_secret = {
+                'apiVersion': 'v1',
+                'kind': 'Secret',
+                'metadata': {
+                    'name': name,
+                    'namespace': namespace
+                },
+                'type': secret.get('type', 'Opaque'),
+                'stringData': secret_data
+            }
+            
+            # Write to temp file for kubeseal
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+                yaml.dump(new_secret, f)
+                temp_file = f.name
+            
+            try:
+                # Seal the secret using kubeseal
+                result = subprocess.run(
+                    f'kubeseal --controller-namespace={self.controller_namespace} -o yaml < {temp_file}',
+                    shell=True, capture_output=True, text=True, check=True
+                )
+                
+                # Save the sealed secret to output file
+                with open(output_file, 'w') as f:
+                    f.write(result.stdout)
+                
+                print(f"✅ SealedSecret created successfully: {output_file}")
+                
+                # Show the YAML output
+                print(f"\n📄 Generated SealedSecret YAML:")
+                print("=" * 50)
+                print(result.stdout)
+                print("=" * 50)
+                
+                # Ask if user wants to apply it
+                if input("\nApply SealedSecret to cluster? [y/N]: ").lower().startswith('y'):
+                    return self.apply(output_file)
+                
+                return True
+                
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to seal secret:")
+                print(f"   Error: {e.stderr}")
+                print(f"   Return code: {e.returncode}")
+                return False
+            finally:
+                os.unlink(temp_file)
+                
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to retrieve secret '{name}' from namespace '{namespace}':")
+            print(f"   Error: {e.stderr}")
+            print("   Make sure the secret exists and you have proper permissions")
+            return False
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+            return False
+
 def main():
     parser = argparse.ArgumentParser(description='Simple SealedSecret Manager')
     parser.add_argument('--dir', help='Directory for secrets', default=os.getcwd())
@@ -392,6 +490,12 @@ def main():
     decrypt_parser.add_argument('target', help='File path or secret name')
     decrypt_parser.add_argument('--namespace', default='default', help='Namespace (for name)')
 
+    # Convert
+    convert_parser = subparsers.add_parser('convert', help='Convert existing Kubernetes secret to SealedSecret')
+    convert_parser.add_argument('name', help='Secret name')
+    convert_parser.add_argument('--namespace', default='default', help='Namespace')
+    convert_parser.add_argument('--output', '-o', help='Output file path (default: <name>.yaml)')
+
     args = parser.parse_args()
 
     # Create manager
@@ -415,10 +519,12 @@ def main():
         success = manager.apply(args.file)
     elif args.command == 'decrypt':
         success = manager.decrypt(args.target, args.namespace)
+    elif args.command == 'convert':
+        success = manager.convert_secret(args.name, args.namespace, args.output)
     else:
         # Interactive mode
         print("🔐 SealedSecret Manager")
-        print("Available commands: create, update, list, apply, decrypt")
+        print("Available commands: create, update, list, apply, decrypt, convert")
         parser.print_help()
         success = True
 
